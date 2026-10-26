@@ -519,6 +519,37 @@ function reviveAd(){adShow('rewarded',ok=>{if(!ok){toast('Ad not available. Try 
 async function adCoins(){if((MS.ad||0)>=5){toast('Daily ad limit reached.');return}adShow('rewarded',ok=>{if(!ok){toast('Ad not available. Try again later.');return}MS.ad=(MS.ad||0)+1;try{localStorage.setItem('vp_ms',JSON.stringify(MS))}catch(e){}coins+=50;sfx('coin');svc();toast('+50 COINS');shop(6)})}
 function levels(){let h='<div style="display:grid;grid-template-columns:repeat(5,60px);gap:8px;justify-content:center;max-height:44vh;overflow-y:auto;padding:4px">';for(let i=0;i<CAMP;i++){const ok=i<=saved;h+='<button class="lb" '+(ok?'':'disabled')+' onclick="audio();ENDL=false;load('+i+')">'+(i+1)+'<br><small>'+('★'.repeat(ST[i]||0)||(ok?'·':'🔒'))+'</small></button>'}msg.innerHTML=h+'</div><button class="bk" onclick="home()">BACK</button>';ttl.textContent='SELECT SECTOR'}
 document.getElementById('lvb').onclick=levels;svc();if(bonusTxt)setTimeout(()=>toast(bonusTxt.replace(/<[^>]*>/g,'').trim()),700);ov.style.display='flex';requestAnimationFrame(loop);
+
+/* Android/Tapsell bridge. Ads require a native Android host and real Tapsell IDs.
+   Rewards are granted only when the native SDK confirms completed rewarded playback. */
+(function installTapsellBridge(){
+  let seq = 0;
+  const pending = new Map();
+  window.onTapsellAdResult = function(id, success) {
+    const resolve = pending.get(String(id));
+    if (!resolve) return;
+    pending.delete(String(id));
+    resolve(success === true || success === 'true');
+  };
+  function request(kind, options) {
+    return new Promise(resolve => {
+      const native = window.TapsellBridge;
+      if (!native) { resolve(false); return; }
+      const id = String(++seq);
+      pending.set(id, resolve);
+      try {
+        const unit = String((options && options.unit) || '');
+        if (kind === 'rewarded' && typeof native.showRewardedAd === 'function') native.showRewardedAd(id, unit);
+        else if (kind === 'interstitial' && typeof native.showInterstitialAd === 'function') native.showInterstitialAd(id, unit);
+        else { pending.delete(id); resolve(false); return; }
+      } catch (e) { pending.delete(id); resolve(false); return; }
+      setTimeout(() => { if (pending.has(id)) { pending.delete(id); resolve(false); } }, 120000);
+    });
+  }
+  window.PlayAds = window.PlayAds || {};
+  window.PlayAds.rewarded = opts => request('rewarded', opts);
+  window.PlayAds.interstitial = opts => request('interstitial', opts);
+})();
 </script>
 </body>
 </html>
