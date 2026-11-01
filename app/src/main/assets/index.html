@@ -96,8 +96,9 @@ const cv=document.getElementById('c'),ctx=cv.getContext('2d');
 const fd=Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype,'font');Object.defineProperty(ctx,'font',{get(){return fd.get.call(this)},set(v){fd.set.call(this,String(v).replace(/"Trebuchet MS",Arial,sans-serif/,'Rajdhani,"Arial Narrow",sans-serif'))}});
 const ov=document.getElementById('ov'),msg=document.getElementById('msg'),btn=document.getElementById('btn'),ttl=document.getElementById('t');
 if(!CanvasRenderingContext2D.prototype.roundRect)CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h,r){r=Math.min(r,w/2,h/2);this.moveTo(x+r,y);this.arcTo(x+w,y,x+w,y+h,r);this.arcTo(x+w,y+h,x,y+h,r);this.arcTo(x,y+h,x,y,r);this.arcTo(x,y,x+w,y,r);this.closePath()};
+const weakDevice=(navigator.deviceMemory||4)<=3||(navigator.hardwareConcurrency||4)<=4;
 let S=1,OX=0,OY=0,DPR=1;
-function resize(){DPR=Math.min(devicePixelRatio||1,2);cv.width=cv.clientWidth*DPR;cv.height=cv.clientHeight*DPR;S=Math.min(cv.width/W,cv.height/H);OX=(cv.width-W*S)/2;OY=(cv.height-H*S)/2}
+function resize(){const maxDpr=weakDevice?1:((navigator.deviceMemory||4)<=4?1.25:1.5);DPR=Math.min(devicePixelRatio||1,maxDpr);cv.width=cv.clientWidth*DPR;cv.height=cv.clientHeight*DPR;S=Math.min(cv.width/W,cv.height/H);OX=(cv.width-W*S)/2;OY=(cv.height-H*S)/2}
 addEventListener('resize',resize);resize();
 
 /* ---------- static background ---------- */
@@ -147,7 +148,7 @@ const LV=[
 ];
 let saved=0;try{saved=+localStorage.getItem('vp_lv')||0}catch(e){}
 let ST=[],BS=[];try{ST=JSON.parse(localStorage.getItem('vp_st')||'[]');BS=JSON.parse(localStorage.getItem('vp_bs')||'[]')}catch(e){}
-const CAMP=LV.length;let rot=false,landDone=false,aimPlus=false,megaN=0,lc0=0,queue=[],ft=16,lowq=false,paused=false,camx=0,RNG=Math.random,daily=0,dkey='',ENDL=false,wv=1,carry=4,runScore=0,mod={well:1,blast:1,tnt:1,cmb:1,nova:3,salv:0},BEST=0,fired=0;try{BEST=+localStorage.getItem('vp_best')||0}catch(e){}
+const CAMP=LV.length;let rot=false,landDone=false,aimPlus=false,megaN=0,lc0=0,queue=[],ft=16,lowq=weakDevice,paused=false,camx=0,RNG=Math.random,daily=0,dkey='',ENDL=false,wv=1,carry=4,runScore=0,mod={well:1,blast:1,tnt:1,cmb:1,nova:3,salv:0},BEST=0,fired=0;try{BEST=+localStorage.getItem('vp_best')||0}catch(e){}
 const SK=[{n:'COSMIC',d:'Balanced squad',p:0,c:'170,100,255',h:270},{n:'MAGMA',d:'Heavy: hits harder',p:150,c:'255,120,40',h:18},{n:'FROST',d:'Coins x1.5',p:300,c:'90,220,255',h:190},{n:'TOXIC',d:'Well range +15%',p:500,c:'130,255,70',h:105},{n:'NEON',d:'Blast power +15%',p:800,c:'255,70,200',h:325}],SB=[{},{heavy:1.5},{coin:1.5},{well:1.15},{blast:1.15}];
 let coins=0,own=[1,0,0,0,0],sk=0,bonusTxt='';
 try{coins=+localStorage.getItem('vp_c')||0;own=JSON.parse(localStorage.getItem('vp_own')||'[1,0,0,0,0]');sk=+localStorage.getItem('vp_sk')||0;if(!own[sk])sk=0}catch(e){}
@@ -374,9 +375,10 @@ function draw(){
   if(hint){const hw=ctx.measureText(hint).width+36;ctx.fillStyle='rgba(8,10,40,.6)';ctx.beginPath();ctx.roundRect(W/2-hw/2,H-40,hw,28,14);ctx.fill();ctx.fillStyle='#fff';ctx.fillText(hint,W/2,H-26)}
 }
 let last=performance.now(),acc=0;
-function loop(t){const dtt=Math.min(100,t-last);ft=ft*.97+dtt*.03;if(tick>120)lowq=ft>27;acc+=dtt;last=t;
+let lastDraw=0;
+function loop(t){const dtt=Math.min(100,t-last);ft=ft*.97+dtt*.03;if(tick>120)lowq=weakDevice||ft>27;acc+=dtt;last=t;
   const fr=slow>0?2000/60:1000/60;while(acc>=fr){if(paused){}else if(state!='title')step();else tick++;if(slow>0)slow--;acc-=fr}
-  draw();requestAnimationFrame(loop)}
+  if(!weakDevice||t-lastDraw>=33){draw();lastDraw=t}requestAnimationFrame(loop)}
 setWorld(CS.sel.wd);engine=Engine.create();load(saved);state='title';btn.textContent=saved?'CONTINUE':'PLAY';msg.innerHTML+='<br>'+chips();
 const PERKS=[['WIDE WELL','Singularity range +30%',()=>mod.well*=1.3],['OVERCHARGE','Blast power +35%',()=>mod.blast*=1.35],['EXTRA CELL','+2 shots right now',()=>carry+=2],['VOLATILE','TNT blast radius +40%',()=>mod.tnt*=1.4],['CHAIN REACTOR','Combo points x1.5',()=>mod.cmb*=1.5],['NOVA LOADER','Every 2nd shot is a NOVA',()=>mod.nova=2],['SALVAGE','+1 shot after every wave',()=>mod.salv+=1],['HEAVY CORE','Core hits twice as hard',()=>mod.heavy=(mod.heavy||1)*2],['TIME REWIND','Retry a failed wave once',()=>mod.rewind=(mod.rewind||0)+1]];
 function seed(s){return()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
