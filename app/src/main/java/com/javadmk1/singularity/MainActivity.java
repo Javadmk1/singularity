@@ -2,6 +2,12 @@ package com.javadmk1.singularity;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.os.Process;
+import android.widget.Toast;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
 import android.view.View;
@@ -32,10 +38,14 @@ public class MainActivity extends Activity {
     private WebView web;
     private AdView bannerAdView;
     private LinearLayout root;
+    private Thread.UncaughtExceptionHandler previousCrashHandler;
+    private boolean recoveringRenderer = false;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        installCrashLogger();
+        showPreviousCrashIfAny();
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -64,6 +74,27 @@ public class MainActivity extends Activity {
                     WebView view, android.webkit.WebResourceRequest request) {
                 return assetLoader.shouldInterceptRequest(request.getUrl());
             }
+
+            @Override
+            public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
+                if (isFinishing() || isDestroyed() || recoveringRenderer) return true;
+                recoveringRenderer = true;
+                runOnUiThread(() -> {
+                    try {
+                        if (view.getParent() instanceof LinearLayout) {
+                            ((LinearLayout) view.getParent()).removeView(view);
+                        }
+                        view.destroy();
+                        createGameWebView(assetLoader);
+                        Toast.makeText(MainActivity.this, "بازی پس از خطای گرافیکی دوباره بارگذاری شد", Toast.LENGTH_LONG).show();
+                    } catch (Exception e) {
+                        logDiagnostic("WebView renderer recovery failed", e);
+                    } finally {
+                        recoveringRenderer = false;
+                    }
+                });
+                return true;
+            }
         });
 
         WebSettings settings = web.getSettings();
@@ -84,6 +115,56 @@ public class MainActivity extends Activity {
         web.loadUrl("https://appassets.androidplatform.net/assets/index.html");
 
         initializeTestAds();
+    }
+
+    private void installCrashLogger() {
+        previousCrashHandler = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
+            logDiagnostic("UNCAUGHT CRASH on thread " + thread.getName(), error);
+            if (previousCrashHandler != null) previousCrashHandler.uncaughtException(thread, error);
+            else Process.killProcess(Process.myPid());
+        });
+    }
+
+    private void logDiagnostic(String title, Throwable error) {
+        try (FileWriter writer = new FileWriter(new File(getFilesDir(), "last_crash.txt"), false)) {
+            writer.write(title + "\\n");
+            if (error != null) {
+                StringWriter trace = new StringWriter();
+                error.printStackTrace(new PrintWriter(trace));
+                writer.write(trace.toString());
+            }
+        } catch (Exception ignored) { }
+    }
+
+    private void showPreviousCrashIfAny() {
+        File report = new File(getFilesDir(), "last_crash.txt");
+        if (report.exists()) {
+            Toast.makeText(this, "خطای قبلی ثبت شد؛ فایل last_crash.txt برای بررسی ذخیره شده است", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void createGameWebView(WebViewAssetLoader assetLoader) {
+        web = new WebView(this);
+        web.setBackgroundColor(0xFF070A24);
+        web.setWebViewClient(new WebViewClient() {
+            @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, android.webkit.WebResourceRequest request) {
+                return assetLoader.shouldInterceptRequest(request.getUrl());
+            }
+        });
+        WebSettings settings = web.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(false);
+        settings.setJavaScriptCanOpenWindowsAutomatically(false);
+        settings.setSupportMultipleWindows(false);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        settings.setSafeBrowsingEnabled(true);
+        web.setWebChromeClient(new WebChromeClient());
+        root.addView(web, 0, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        web.loadUrl("https://appassets.androidplatform.net/assets/index.html");
     }
 
     private void initializeTestAds() {
